@@ -8,6 +8,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 
 import java.io.IOException;
 import java.util.List;
@@ -19,11 +24,11 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
 
-    // ✅ Define public paths
+    // Public paths (no auth required)
     private static final List<String> EXCLUDED_PATHS = List.of(
         "/api/auth/login",
         "/api/auth/register",
-        "/api/products" // add more as needed
+        "/api/products"
     );
 
     @Override
@@ -34,8 +39,8 @@ public class JwtTokenFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
 
-        // ✅ Skip authentication for public endpoints
-        if (EXCLUDED_PATHS.contains(path)) {
+        // allow public endpoints
+        if (EXCLUDED_PATHS.stream().anyMatch(path::startsWith)) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -50,13 +55,25 @@ public class JwtTokenFilter extends OncePerRequestFilter {
                 return;
             }
 
-            String role = jwtTokenProvider.getRoleFromToken(token);
+            String role = jwtTokenProvider.getRoleFromToken(token);   // e.g. "USER" or "ADMIN"
             String userId = jwtTokenProvider.getUserIdFromToken(token);
 
+            // still keep them as request attributes if your controllers use them
             request.setAttribute("role", role);
             request.setAttribute("userId", userId);
 
+            // ✅ Tell Spring Security that this user is authenticated
+            List<GrantedAuthority> authorities =
+                    List.of(new SimpleGrantedAuthority("ROLE_" + role)); // ROLE_USER / ROLE_ADMIN
+
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(userId, null, authorities);
+
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
         } else {
+            // no header
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing Authorization header");
             return;
         }

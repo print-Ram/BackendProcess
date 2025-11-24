@@ -4,6 +4,8 @@ import com.choco.home.pojo.Address;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.Timestamp;
 import com.google.cloud.firestore.*;
+import com.google.firebase.cloud.FirestoreClient;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -72,6 +74,21 @@ public class AddressService {
         return addresses;
     }
 
+    public void updateAddress(String addressId, Address address) throws ExecutionException, InterruptedException {
+        Firestore db = FirestoreClient.getFirestore();
+
+        // Ensure the address ID stays consistent
+        address.setAddressId(addressId);
+
+        ApiFuture<WriteResult> future = db
+                .collection("addresses")
+                .document(addressId)
+                .set(address);  // .set() replaces the document
+
+        future.get(); // block until completed
+    }
+
+    
     /**
      * Delete an address for a specific user
      */

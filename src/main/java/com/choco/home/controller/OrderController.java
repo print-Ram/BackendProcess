@@ -1,11 +1,17 @@
 package com.choco.home.controller;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.choco.home.pojo.Order;
+
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -20,8 +26,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
+import com.choco.home.dto.AddressSuggestionDto;
+import com.choco.home.dto.AddressWithDeliveryDto;
 import com.choco.home.pojo.Order;
 import com.choco.home.service.OrderService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.razorpay.RazorpayClient;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -34,9 +44,18 @@ public class OrderController {
     @Autowired
     private OrderService orderService;
 
+    @Value("${google.maps.api.key}")
+    private String googleMapsApiKey;
+
+    // ✅ FIXED WAREHOUSE (CHOCOLATE ROOM) LOCATION
+    // Set these to your real warehouse coordinates
+    private static final double WAREHOUSE_LAT = 13.063996;   // example: Bangalore lat
+    private static final double WAREHOUSE_LNG = 77.581270;   // example: Bangalore lng
+
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public OrderController() {
-
     }
 
     // ✅ USERS: Get only their own orders
@@ -90,14 +109,13 @@ public class OrderController {
         }
     }
 
-    
     @PostMapping("/update-shipping")
     public ResponseEntity<String> updateShipping(
-        @RequestParam String orderId,
-        @RequestParam String senderName,
-        @RequestParam String courierService,
-        @RequestParam String trackingId,
-        HttpServletRequest request
+            @RequestParam String orderId,
+            @RequestParam String senderName,
+            @RequestParam String courierService,
+            @RequestParam String trackingId,
+            HttpServletRequest request
     ) {
         // ✅ Check if user is ADMIN
         String role = (String) request.getAttribute("role");
@@ -107,14 +125,13 @@ public class OrderController {
 
         try {
             String response = orderService.updateShippingDetails(
-                orderId, "SHIPPED", senderName, courierService, trackingId
+                    orderId, "SHIPPED", senderName, courierService, trackingId
             );
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
         }
     }
-
 
     // ✅ ADMIN: Get all orders
     @GetMapping
@@ -138,7 +155,7 @@ public class OrderController {
     public ResponseEntity<?> updateOrderStatus(HttpServletRequest request,
                                                @PathVariable String orderId,
                                                @RequestParam String status) {
-    	if (orderId == null || orderId.isEmpty()) {
+        if (orderId == null || orderId.isEmpty()) {
             return ResponseEntity.badRequest().body("Order ID cannot be empty");
         }
         String role = (String) request.getAttribute("role");
@@ -182,16 +199,13 @@ public class OrderController {
         }
 
         try {
-        	order.setUser_id(userId);
-        	order.setStatus("CONFIRMED");
-        	order.setOrderDate(new Date());
+            order.setUser_id(userId);
+            order.setStatus("CONFIRMED");
+            order.setOrderDate(new Date());
 
-        	// Ensure shippingAddress is always an object
-        	if (order.getAddressId() == null || order.getAddressId().isEmpty()) {
-        	    return ResponseEntity.badRequest().body("Address ID is required for placing an order.");
-        	}
-
-
+            if (order.getAddressId() == null || order.getAddressId().isEmpty()) {
+                return ResponseEntity.badRequest().body("Address ID is required for placing an order.");
+            }
 
             String orderId = orderService.placeOrder(order);
             return ResponseEntity.ok("Order placed successfully with ID: " + orderId);
@@ -200,11 +214,11 @@ public class OrderController {
             return ResponseEntity.status(500).body("Failed to place order");
         }
     }
-    
+
     @PostMapping("/create-payment")
     public ResponseEntity<?> createPayment(@RequestBody Map<String, Object> payload) {
         try {
-        	Object rawAmount = payload.get("amount");
+            Object rawAmount = payload.get("amount");
             double amountDouble;
 
             if (rawAmount instanceof Integer) {
@@ -217,7 +231,6 @@ public class OrderController {
 
             int amount = (int) (amountDouble * 100);
 
-
             RazorpayClient razorpay = new RazorpayClient("rzp_test_ZFRZgGGwyk6bgC", "eTXQfRrxnASyBQ2K9okdIqAA");
 
             JSONObject options = new JSONObject();
@@ -229,28 +242,173 @@ public class OrderController {
             return ResponseEntity.ok(order.toString()); // contains id, amount, etc.
 
         } catch (Exception e) {
-        	e.printStackTrace();
+            e.printStackTrace();
             return ResponseEntity.status(500).body("Failed to create payment order.");
         }
     }
-    
-    @GetMapping("/get-address")
-    public ResponseEntity<?> getAddress(@RequestParam double lat, @RequestParam double lng) {
-        String apiKey = "AIzaSyD6e8uuOUS-REEZWnKUTk7osQAMNRizfmg";
-        String url = String.format(
-            "https://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f&key=%s",
-            lat, lng, apiKey
-        );
 
+    // ✅ 1) ADDRESS SUGGESTIONS BY TEXT (for autocomplete box)
+    @GetMapping("/address-suggestions")
+    public ResponseEntity<?> suggestAddresses(@RequestParam String query) {
         try {
-            RestTemplate restTemplate = new RestTemplate();
+            String url = "https://maps.googleapis.com/maps/api/geocode/json"
+                    + "?address=" + query
+                    + "&key=" + googleMapsApiKey;
+
             String response = restTemplate.getForObject(url, String.class);
-            return ResponseEntity.ok(response);
+            JsonNode root = objectMapper.readTree(response);
+            JsonNode results = root.path("results");
+
+            List<AddressSuggestionDto> suggestions = new ArrayList<>();
+
+            int count = 0;
+            for (JsonNode resultNode : results) {
+                if (count >= 5) break; // limit to 5 suggestions
+
+                AddressSuggestionDto dto = new AddressSuggestionDto();
+                dto.setFullAddress(resultNode.path("formatted_address").asText());
+
+                JsonNode components = resultNode.path("address_components");
+                fillAddressFieldsFromComponents(components, dto);
+
+                suggestions.add(dto);
+                count++;
+            }
+
+            return ResponseEntity.ok(suggestions);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Geocoding failed");
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to fetch address suggestions");
         }
     }
 
+    // ✅ 2) REVERSE GEOCODE + DISTANCE + DELIVERY FEE
+    @GetMapping("/get-address")
+    public ResponseEntity<?> getAddress(@RequestParam double lat, @RequestParam double lng) {
+        try {
+            String url = String.format(
+                    "https://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f&key=%s",
+                    lat, lng, googleMapsApiKey
+            );
 
-    
+            String response = restTemplate.getForObject(url, String.class);
+            JsonNode root = objectMapper.readTree(response);
+            JsonNode results = root.path("results");
+
+            if (!results.isArray() || results.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No address found for these coordinates");
+            }
+
+            JsonNode firstResult = results.get(0);
+
+            AddressWithDeliveryDto dto = new AddressWithDeliveryDto();
+            dto.setFullAddress(firstResult.path("formatted_address").asText());
+
+            JsonNode components = firstResult.path("address_components");
+            fillAddressFieldsFromComponents(components, dto);
+
+            // Distance from warehouse
+            double distanceKm = calculateDistanceKm(WAREHOUSE_LAT, WAREHOUSE_LNG, lat, lng);
+            dto.setDistanceKm(distanceKm);
+
+            // Delivery fee based on distance
+            double deliveryFee = calculateDeliveryFee(distanceKm);
+            dto.setDeliveryFee(deliveryFee);
+
+            return ResponseEntity.ok(dto);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Geocoding failed");
+        }
+    }
+
+    // 🔧 Helper: fill area / city / state / postalCode from Google address_components
+    private void fillAddressFieldsFromComponents(JsonNode components, Object target) {
+        String area = null;
+        String city = null;
+        String state = null;
+        String postalCode = null;
+
+        for (JsonNode comp : components) {
+            String longName = comp.path("long_name").asText();
+            JsonNode types = comp.path("types");
+
+            for (JsonNode t : types) {
+                String type = t.asText();
+
+                if (area == null &&
+                        ("sublocality".equals(type)
+                                || "sublocality_level_1".equals(type)
+                                || "neighborhood".equals(type)
+                                || "route".equals(type))) {
+                    area = longName;
+                }
+
+                if (city == null && "locality".equals(type)) {
+                    city = longName;
+                }
+
+                if (state == null && "administrative_area_level_1".equals(type)) {
+                    state = longName;
+                }
+
+                if (postalCode == null && "postal_code".equals(type)) {
+                    postalCode = longName;
+                }
+            }
+        }
+
+        if (target instanceof AddressSuggestionDto dto) {
+            dto.setArea(area);
+            dto.setCity(city);
+            dto.setState(state);
+            dto.setPostalCode(postalCode);
+        } else if (target instanceof AddressWithDeliveryDto dto) {
+            dto.setArea(area);
+            dto.setCity(city);
+            dto.setState(state);
+            dto.setPostalCode(postalCode);
+        }
+    }
+
+    // 🔧 Helper: Haversine distance
+    private double calculateDistanceKm(double lat1, double lon1, double lat2, double lon2) {
+        double R = 6371.0; // Earth radius in km
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    // 🔧 Helper: simple fee slabs – tweak as you like
+    private double calculateDeliveryFee(double distanceKm) {
+        double baseFee = 39.0;        // first 5 km
+        double slabDistance = 3.0;    // each slab = 5 km
+        double extraPerSlab = 25.0;   // ₹20 per additional 5 km
+        double maxFee = 399.0;        // hard cap within India for this model
+
+        if (distanceKm <= 0) {
+            return 0; // or baseFee, based on your business rule
+        }
+
+        if (distanceKm <= slabDistance) {
+            return baseFee;
+        }
+
+        double extraDistance = distanceKm - slabDistance;
+        int extraSlabs = (int) Math.ceil(extraDistance / slabDistance);
+
+        double fee = baseFee + (extraSlabs * extraPerSlab);
+
+        // Don’t go beyond maxFee with this local-delivery model
+        return Math.min(fee, maxFee);
+    }
+
+
 }
