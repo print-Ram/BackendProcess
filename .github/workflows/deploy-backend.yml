@@ -3,7 +3,7 @@ name: Build & Deploy Backend to Cloud Run
 on:
   push:
     branches:
-      - master   # change to main if your default branch is main
+      - master
 
 jobs:
   build-deploy:
@@ -29,8 +29,7 @@ jobs:
       - name: Cache Maven packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.m2/repository
+          path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
@@ -38,7 +37,7 @@ jobs:
       - name: Build with Maven
         run: mvn -B clean package -DskipTests
 
-      # 2. Authenticate to GCP with service account JSON
+      # 2. Authenticate to Google Cloud
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -48,18 +47,16 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
           export_default_credentials: true
 
       - name: Configure Docker for gcloud
         run: gcloud auth configure-docker gcr.io --quiet
 
-      # 3. Build Docker image using the Dockerfile in repo
+      # 3. Build Docker image
       - name: Build Docker image
         run: docker build -t $IMAGE .
 
-      # 4. Push Docker image to Google Container Registry
+      # 4. Push Docker image
       - name: Push Docker image
         run: docker push $IMAGE
 
@@ -72,6 +69,5 @@ jobs:
               --platform managed \
               --allow-unauthenticated \
               --port 8080 \
-              --set-env-vars FIREBASE_CONFIG_JSON="${{ secrets.FIREBASE_CONFIG_JSON }}" \
-              --set-env-vars GOOGLE_MAPS_API_KEY="${{ secrets.GOOGLE_MAPS_API_KEY}}"
-
+              --set-env-vars FIREBASE_JSON="${{ secrets.FIREBASE_JSON }}" \
+              --set-env-vars GOOGLE_MAPS_API_KEY="${{ secrets.GOOGLE_MAPS_API_KEY }}"
