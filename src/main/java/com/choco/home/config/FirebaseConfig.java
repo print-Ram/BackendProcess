@@ -2,7 +2,7 @@ package com.choco.home.config;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,15 +19,18 @@ public class FirebaseConfig {
     @Bean
     public Firestore firestore() throws Exception {
 
-    	String firebaseJson = System.getenv("FIREBASE_JSON");
-    	if (firebaseJson == null) {
+    	String firebase64 = System.getenv("FIREBASE_JSON");
+    	if (firebase64 == null) {
     	    throw new RuntimeException("Missing FIREBASE_JSON env variable");
     	}
-    	InputStream serviceAccount = new ByteArrayInputStream(firebaseJson.getBytes(StandardCharsets.UTF_8));
+
+    	byte[] decodedBytes = Base64.getDecoder().decode(firebase64);
+    	InputStream serviceAccount = new ByteArrayInputStream(decodedBytes);
 
     	FirebaseOptions options = FirebaseOptions.builder()
     	        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
     	        .build();
+
 
         if (FirebaseApp.getApps().isEmpty()) {
             FirebaseApp.initializeApp(options);
