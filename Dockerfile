@@ -1,10 +1,8 @@
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk-jammy
 
-# Copy the jar built by Maven into the image
+# Copy JAR
 COPY target/home-0.0.1-SNAPSHOT.jar app.jar
 
-# Expose the port your Spring Boot app runs on
 EXPOSE 8080
 
-# Run app
 ENTRYPOINT ["java", "-jar", "app.jar"]
