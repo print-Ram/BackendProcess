@@ -67,8 +67,11 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
-            --image $IMAGE \
-            --region $REGION \
-            --platform managed \
-            --allow-unauthenticated \
-            --port 8080
+              --image $IMAGE \
+              --region $REGION \
+              --platform managed \
+              --allow-unauthenticated \
+              --port 8080 \
+              --set-env-vars FIREBASE_CONFIG_JSON="${{ secrets.FIREBASE_CONFIG_JSON }}" \
+              --set-env-vars GOOGLE_MAPS_API_KEY="${{ secrets.GOOGLE_MAPS_API_KEY}}"
+
