@@ -1,8 +1,4 @@
-FROM eclipse-temurin:17-jdk-jammy
-
-# Copy JAR
-COPY target/home-0.0.1-SNAPSHOT.jar app.jar
-
+FROM openjdk:17-jdk-slim
+COPY home-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Dserver.port=${PORT}", "-jar", "app.jar"]

@@ -1,14 +1,17 @@
 package com.choco.home.config;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.firestore.Firestore;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.cloud.FirestoreClient;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-import java.io.ByteArrayInputStream;
 
 @Configuration
 public class FirebaseConfig {
@@ -16,19 +19,15 @@ public class FirebaseConfig {
     @Bean
     public Firestore firestore() throws Exception {
 
-        // Read raw JSON from environment variable
-        String firebaseJson = System.getenv("FIREBASE_CONFIG_JSON");
+    	String firebaseJson = System.getenv("FIREBASE_JSON");
+    	if (firebaseJson == null) {
+    	    throw new RuntimeException("Missing FIREBASE_JSON env variable");
+    	}
+    	InputStream serviceAccount = new ByteArrayInputStream(firebaseJson.getBytes(StandardCharsets.UTF_8));
 
-        if (firebaseJson == null || firebaseJson.isEmpty()) {
-            throw new IllegalStateException("FIREBASE_CONFIG_JSON is not set!");
-        }
-
-        ByteArrayInputStream serviceAccount = 
-                new ByteArrayInputStream(firebaseJson.getBytes());
-
-        FirebaseOptions options = new FirebaseOptions.Builder()
-                .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                .build();
+    	FirebaseOptions options = FirebaseOptions.builder()
+    	        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+    	        .build();
 
         if (FirebaseApp.getApps().isEmpty()) {
             FirebaseApp.initializeApp(options);
