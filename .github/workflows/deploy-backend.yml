@@ -1,0 +1,68 @@
+name: Build & Deploy Backend to Cloud Run
+
+on:
+  push:
+    branches:
+      - master   # change to main if your default branch is main
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ secrets.CLOUD_RUN_REGION }}
+      SERVICE: ${{ secrets.CLOUD_RUN_SERVICE }}
+      IMAGE: gcr.io/${{ secrets.GCP_PROJECT_ID }}/deploytest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 1. Set up Java to build the JAR
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build with Maven
+        run: mvn -B clean package -DskipTests
+
+      # 2. Authenticate to GCP with service account JSON
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Configure Docker for gcloud
+        run: gcloud auth configure-docker gcr.io --quiet
+
+      # 3. Build Docker image using the Dockerfile in repo
+      - name: Build Docker image
+        run: docker build -t $IMAGE .
+
+      # 4. Push Docker image to Google Container Registry
+      - name: Push Docker image
+        run: docker push $IMAGE
+
+      # 5. Deploy to Cloud Run
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --image $IMAGE \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080
