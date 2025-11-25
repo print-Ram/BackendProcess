@@ -6,5 +6,5 @@ COPY target/home-0.0.1-SNAPSHOT.jar app.jar
 # Expose the port your Spring Boot app runs on
 EXPOSE 8080
 
-# Run the app
+# Run app
 ENTRYPOINT ["java", "-jar", "app.jar"]
