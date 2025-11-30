@@ -28,7 +28,8 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     private static final List<String> EXCLUDED_PATHS = List.of(
         "/api/auth/login",
         "/api/auth/register",
-        "/api/products"
+        "/api/products",
+        "api/addresses/address-suggestions"
     );
 
     @Override
