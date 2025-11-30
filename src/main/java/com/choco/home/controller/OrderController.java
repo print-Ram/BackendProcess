@@ -248,40 +248,55 @@ public class OrderController {
     }
 
     // ✅ 1) ADDRESS SUGGESTIONS BY TEXT (for autocomplete box)
-    @GetMapping("/address-suggestions")
-    public ResponseEntity<?> suggestAddresses(@RequestParam String query) {
-        try {
-            String url = "https://maps.googleapis.com/maps/api/geocode/json"
-                    + "?address=" + query
-                    + "&key=" + googleMapsApiKey;
+  
+@GetMapping("/address-suggestions")
+public ResponseEntity<?> suggestAddresses(
+        @RequestParam String query,
+        @RequestParam(required = false) Double lat,
+        @RequestParam(required = false) Double lng) {
 
-            String response = restTemplate.getForObject(url, String.class);
-            JsonNode root = objectMapper.readTree(response);
-            JsonNode results = root.path("results");
+    try {
+        String baseUrl = "https://maps.googleapis.com/maps/api/place/autocomplete/json";
 
-            List<AddressSuggestionDto> suggestions = new ArrayList<>();
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(baseUrl)
+                .queryParam("input", query)
+                .queryParam("key", googleMapsApiKey)
+                .queryParam("types", "geocode")        
+                .queryParam("components", "country:IN"); // limit to India (optional)
 
-            int count = 0;
-            for (JsonNode resultNode : results) {
-                if (count >= 5) break; // limit to 5 suggestions
-
-                AddressSuggestionDto dto = new AddressSuggestionDto();
-                dto.setFullAddress(resultNode.path("formatted_address").asText());
-
-                JsonNode components = resultNode.path("address_components");
-                fillAddressFieldsFromComponents(components, dto);
-
-                suggestions.add(dto);
-                count++;
-            }
-
-            return ResponseEntity.ok(suggestions);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to fetch address suggestions");
+        // Bias results around user’s current location if provided
+        if (lat != null && lng != null) {
+            builder.queryParam("location", lat + "," + lng)
+                   .queryParam("radius", 5000);  
         }
+
+        String url = builder.toUriString();
+
+        String response = restTemplate.getForObject(url, String.class);
+        JsonNode root = objectMapper.readTree(response);
+        JsonNode predictions = root.path("predictions");
+
+        List<AddressSuggestionDto> suggestions = new ArrayList<>();
+
+        int count = 0;
+        for (JsonNode p : predictions) {
+            if (count >= 5) break;
+
+            AddressSuggestionDto dto = new AddressSuggestionDto();
+            dto.setFullAddress(p.path("description").asText());
+            suggestions.add(dto);
+            count++;
+        }
+
+        return ResponseEntity.ok(suggestions);
+
+    } catch (Exception e) {
+        e.printStackTrace();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Failed to fetch address suggestions");
     }
+}
+
 
     // ✅ 2) REVERSE GEOCODE + DISTANCE + DELIVERY FEE
     @GetMapping("/get-address")
@@ -389,9 +404,9 @@ public class OrderController {
     // 🔧 Helper: simple fee slabs – tweak as you like
     private double calculateDeliveryFee(double distanceKm) {
         double baseFee = 39.0;        // first 5 km
-        double slabDistance = 3.0;    // each slab = 5 km
+        double slabDistance = 10.0;    // each slab = 5 km
         double extraPerSlab = 25.0;   // ₹20 per additional 5 km
-        double maxFee = 399.0;        // hard cap within India for this model
+        double maxFee = 149.0;        // hard cap within India for this model
 
         if (distanceKm <= 0) {
             return 0; // or baseFee, based on your business rule
