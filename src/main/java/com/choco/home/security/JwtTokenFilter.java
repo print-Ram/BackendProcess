@@ -29,7 +29,7 @@ public class JwtTokenFilter extends OncePerRequestFilter {
         "/api/auth/login",
         "/api/auth/register",
         "/api/products",
-        "api/addresses/address-suggestions"
+       "/auth/orders/address-suggestions"
     );
 
     @Override
