@@ -340,6 +340,23 @@ public ResponseEntity<?> suggestAddresses(
         }
     }
 
+
+@GetMapping("/calculate-fee")
+public ResponseEntity<?> calculateFee(
+        @RequestParam double lat,
+        @RequestParam double lng) {
+
+    double distanceKm = calculateDistanceKm(WAREHOUSE_LAT, WAREHOUSE_LNG, lat, lng);
+    double deliveryFee = calculateDeliveryFee(distanceKm);
+
+    Map<String, Object> response = new HashMap<>();
+    response.put("distanceKm", distanceKm);
+    response.put("deliveryFee", deliveryFee);
+
+    return ResponseEntity.ok(response);
+}
+
+    
     // 🔧 Helper: fill area / city / state / postalCode from Google address_components
     private void fillAddressFieldsFromComponents(JsonNode components, Object target) {
         String area = null;
