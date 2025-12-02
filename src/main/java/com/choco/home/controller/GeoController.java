@@ -11,31 +11,46 @@ import java.nio.charset.StandardCharsets;
 @RequestMapping("/api/geo")
 public class GeoController {
 
+    @Value("${google.api.key}")
+    private String googleApiKey;
+
     @GetMapping("/search")
     public ResponseEntity<String> search(@RequestParam String q) {
-
         try {
             String encoded = URLEncoder.encode(q, StandardCharsets.UTF_8);
-            String url = "https://nominatim.openstreetmap.org/search?format=json&limit=5&q=" + encoded;
+            String url = "https://maps.googleapis.com/maps/api/geocode/json?address="
+                    + encoded
+                    + "&key=" + googleApiKey;
 
             RestTemplate restTemplate = new RestTemplate();
+            String response = restTemplate.getForObject(url, String.class);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("User-Agent", "Mozilla/5.0"); // Nominatim requires a user-agent
-
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    String.class
-            );
-
-            return ResponseEntity.ok(response.getBody());
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return ResponseEntity.status(500).body("Error: " + e.getMessage());
         }
     }
+
+    @GetMapping("/reverse")
+    public ResponseEntity<String> reverseGeocode(
+            @RequestParam double lat,
+            @RequestParam double lng) {
+
+        try {
+            String url = "https://maps.googleapis.com/maps/api/geocode/json?latlng="
+                    + lat + "," + lng
+                    + "&key=" + googleApiKey;
+
+            RestTemplate restTemplate = new RestTemplate();
+            String response = restTemplate.getForObject(url, String.class);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body("Error: " + e.getMessage());
+        }
+    }
 }
+
