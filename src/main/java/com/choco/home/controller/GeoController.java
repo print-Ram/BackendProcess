@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 @RequestMapping("/api/geo")
 public class GeoController {
 
-    @Value("${google.api.key}")
+    @Value("${google.maps.api.key}")
     private String googleApiKey;
 
     @GetMapping("/search")
