@@ -3,7 +3,7 @@ package com.choco.home.controller;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
-
+import org.springframework.beans.factory.annotation.Value;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
