@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -24,60 +25,44 @@ public class JwtTokenFilter extends OncePerRequestFilter {
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
 
-    // Public paths (no auth required)
-    private static final List<String> EXCLUDED_PATHS = List.of(
-        "/api/auth/login",
-        "/api/auth/register",
-        "/api/products",
-       "/auth/orders/address-suggestions"
-    );
-
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String path = request.getRequestURI();
+        String header = request.getHeader("Authorization");
 
-        // allow public endpoints
-        if (EXCLUDED_PATHS.stream().anyMatch(path::startsWith)) {
+        // If there's no Authorization header, just continue.
+        // Public endpoints are allowed by SecurityConfig.
+        if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String header = request.getHeader("Authorization");
+        String token = header.substring(7);
 
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-
-            if (!jwtTokenProvider.validateToken(token)) {
-                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
-                return;
-            }
-
-            String role = jwtTokenProvider.getRoleFromToken(token);   // e.g. "USER" or "ADMIN"
-            String userId = jwtTokenProvider.getUserIdFromToken(token);
-
-            // still keep them as request attributes if your controllers use them
-            request.setAttribute("role", role);
-            request.setAttribute("userId", userId);
-
-            // ✅ Tell Spring Security that this user is authenticated
-            List<GrantedAuthority> authorities =
-                    List.of(new SimpleGrantedAuthority("ROLE_" + role)); // ROLE_USER / ROLE_ADMIN
-
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(userId, null, authorities);
-
-            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-        } else {
-            // no header
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing Authorization header");
+        if (!jwtTokenProvider.validateToken(token)) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
             return;
         }
+
+        String role = jwtTokenProvider.getRoleFromToken(token);   // e.g. "USER" or "ADMIN"
+        String userId = jwtTokenProvider.getUserIdFromToken(token);
+
+        // Expose them to controllers
+        request.setAttribute("role", role);
+        request.setAttribute("userId", userId);
+
+        // Also inform Spring Security
+        List<GrantedAuthority> authorities =
+                List.of(new SimpleGrantedAuthority("ROLE_" + role)); // ROLE_USER / ROLE_ADMIN
+
+        UsernamePasswordAuthenticationToken authentication =
+                new UsernamePasswordAuthenticationToken(userId, null, authorities);
+
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);
     }
